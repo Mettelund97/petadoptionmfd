@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { db } from '../firebase/config';
+import { db } from '../configs/firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const props = defineProps({

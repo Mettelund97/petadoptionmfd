@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { db } from '../firebase/config';
+import { db } from '../configs/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const emit = defineEmits(['pet-added', 'error']);

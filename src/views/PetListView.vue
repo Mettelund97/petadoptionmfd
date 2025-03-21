@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { db } from '../firebase/config';
+import { db } from '../configs/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import PetCard from '../components/PetCard.vue';
 
