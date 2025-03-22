@@ -1,38 +1,63 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { db } from '../configs/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import FilterComponent from '../components/FilterComponent.vue';
+import SortComponent from '../components/SortComponent.vue';
 import PetCard from '../components/PetCard.vue';
+import PetDetailView from '../views/PetDetailView.vue';
 
-// State for pets data and UI states
-const pets = ref([]);
 const loading = ref(true);
 const error = ref(null);
+const sortOption = ref('newest');
 
-// Filter state
-const filterAdopted = ref('all');
-const filterType = ref('all');
+const pets = ref([]);
 
-// Fetch pets from Firestore
+const filters = ref({
+    status: {
+        notAdopted: false
+    },
+    types: {
+        dog: false,
+        cat: false,
+        rabbit: false,
+        bird: false,
+        rodent: false,
+        other: false
+    },
+    gender: {
+        male: false,
+        female: false,
+        unknown: false
+    },
+    age: {
+        baby: false,
+        young: false,
+        adult: false,
+        senior: false
+    }
+});
+
 const fetchPets = async () => {
     loading.value = true;
     error.value = null;
 
     try {
-        // Create query to get pets ordered by creation date
+        console.log("Fetching pets...");
         const petQuery = query(collection(db, 'pets'), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(petQuery);
 
-        // Process the snapshot into usable data
+        console.log("Got query snapshot:", querySnapshot);
         const petsData = [];
         querySnapshot.forEach((doc) => {
+            console.log("Processing doc:", doc.id, doc.data());
             petsData.push({
                 id: doc.id,
                 ...doc.data()
             });
         });
 
-        // Update state with fetched data
+        console.log("Processed pets data:", petsData);
         pets.value = petsData;
     } catch (err) {
         console.error('Error fetching pets: ', err);
@@ -42,153 +67,239 @@ const fetchPets = async () => {
     }
 };
 
-// Computed property for filtered pets based on selected filters
+const applyFilters = () => {
+    console.log('Filters applied');
+};
+
 const filteredPets = computed(() => {
-    // Start with all pets
     let result = [...pets.value];
 
-    // Apply adoption status filter
-    if (filterAdopted.value !== 'all') {
-        const isAdopted = filterAdopted.value === 'adopted';
-        result = result.filter(pet => pet.adopted === isAdopted);
+    if (filters.value.status && filters.value.status.notAdopted) {
+        result = result.filter(pet => !pet.adopted);
     }
 
-    // Apply pet type filter
-    if (filterType.value !== 'all') {
-        result = result.filter(pet => pet.type === filterType.value);
+    const selectedTypes = Object.entries(filters.value.types)
+        .filter(([_, selected]) => selected)
+        .map(([type]) => type);
+
+    if (selectedTypes.length > 0) {
+        result = result.filter(pet => {
+            const typeMap = {
+                dog: 'hund',
+                cat: 'kat',
+                rabbit: 'kanin',
+                bird: 'fugl',
+                rodent: 'gnaver'
+            };
+
+            if (selectedTypes.includes('other')) {
+                const petTypeLC = pet.type.toLowerCase();
+                const isKnownType = Object.values(typeMap).includes(petTypeLC);
+
+                if (!isKnownType) {
+                    return true;
+                }
+            }
+
+            return selectedTypes.includes(pet.type) ||
+                selectedTypes.some(t => typeMap[t] === pet.type.toLowerCase());
+        });
+    }
+
+    const selectedGenders = Object.entries(filters.value.gender)
+        .filter(([_, selected]) => selected)
+        .map(([gender]) => gender);
+
+    if (selectedGenders.length > 0) {
+        result = result.filter(pet => {
+            const genderMap = {
+                male: 'han',
+                female: 'hun',
+                unknown: 'ukendt'
+            };
+
+            return selectedGenders.some(g => genderMap[g] === pet.gender);
+        });
+    }
+
+    const selectedAges = Object.entries(filters.value.age)
+        .filter(([_, selected]) => selected)
+        .map(([age]) => age);
+
+    if (selectedAges.length > 0) {
+        result = result.filter(pet => {
+            const ageInYears = pet.ageYears || 0;
+
+            if (selectedAges.includes('baby') && ageInYears < 1) return true;
+            if (selectedAges.includes('young') && ageInYears >= 1 && ageInYears < 3) return true;
+            if (selectedAges.includes('adult') && ageInYears >= 3 && ageInYears < 8) return true;
+            if (selectedAges.includes('senior') && ageInYears >= 8) return true;
+
+            return false;
+        });
     }
 
     return result;
 });
 
-// Fetch pets when component is mounted
+
+const filteredAndSortedPets = computed(() => {
+    const filtered = [...filteredPets.value];
+
+    switch (sortOption.value) {
+        case 'newest':
+            return filtered.sort((a, b) => {
+                return new Date(b.createdAt) - new Date(a.createdAt);
+            });
+
+        case 'oldest':
+            return filtered.sort((a, b) => {
+                return new Date(a.createdAt) - new Date(b.createdAt);
+            });
+
+        case 'longest-stay':
+            return filtered.sort((a, b) => {
+                return new Date(a.createdAt) - new Date(b.createdAt);
+            });
+
+        case 'name-asc':
+            return filtered.sort((a, b) => {
+                return a.name.localeCompare(b.name);
+            });
+
+        default:
+            return filtered;
+    }
+});
+
+
+const selectedPetId = ref(null);
+const showPetDetail = ref(false);
+
+
+const openPetDetails = (petId) => {
+    selectedPetId.value = petId;
+    showPetDetail.value = true;
+};
+
+const closePetDetails = () => {
+    showPetDetail.value = false;
+};
+
+const handlePetUpdated = (updatedPet) => {
+
+    const index = pets.value.findIndex(pet => pet.id === updatedPet.id);
+    if (index !== -1) {
+        pets.value[index] = { ...pets.value[index], ...updatedPet };
+    }
+};
+
+
 onMounted(fetchPets);
 </script>
 
 <template>
-    <div class="pet-list-container">
-        <!-- Page header -->
-        <h1>Available Pets</h1>
+    <div class="pet-listing">
+        <h1 class="page-title">Kæledyr til adoption</h1>
 
-        <!-- Filter controls -->
-        <div class="filters">
-            <div class="filter-group">
-                <label for="filterAdopted">Show:</label>
-                <select id="filterAdopted" v-model="filterAdopted">
-                    <option value="all">All Pets</option>
-                    <option value="available">Available Pets Only</option>
-                    <option value="adopted">Adopted Pets Only</option>
-                </select>
-            </div>
+        
+        <div class="controls">
+            <FilterComponent v-model:filters="filters" @apply-filters="applyFilters" />
 
-            <div class="filter-group">
-                <label for="filterType">Type:</label>
-                <select id="filterType" v-model="filterType">
-                    <option value="all">All Types</option>
-                    <option value="dog">Dogs</option>
-                    <option value="cat">Cats</option>
-                    <option value="rabbit">Rabbits</option>
-                    <option value="bird">Birds</option>
-                    <option value="other">Other</option>
-                </select>
-            </div>
+            <SortComponent v-model="sortOption" />
         </div>
 
-        <!-- Loading state -->
-        <div v-if="loading" class="status-message loading">
-            <p>Loading pets...</p>
+        
+        <div v-if="error" class="error-message">
+            {{ error }}
         </div>
 
-        <!-- Error state -->
-        <div v-else-if="error" class="status-message error">
-            <p>{{ error }}</p>
+        <div v-else-if="loading" class="loading-message">
+            Indlæser kæledyr...
         </div>
 
-        <!-- Empty state -->
-        <div v-else-if="filteredPets.length === 0" class="status-message empty">
-            <p>No pets found matching your filters.</p>
+        <div v-else-if="filteredAndSortedPets.length === 0" class="empty-state">
+            Ingen kæledyr matcher dine filtre.
         </div>
 
-        <!-- Pet grid -->
         <div v-else class="pets-grid">
-            <PetCard v-for="pet in filteredPets" :key="pet.id" :pet="pet" />
+            <PetCard v-for="pet in filteredAndSortedPets" :key="pet.id" :pet="pet" @click="openPetDetails(pet.id)" />
         </div>
+
+        
+        <PetDetailView :petId="selectedPetId" :show="showPetDetail" @close="closePetDetails"
+            @pet-updated="handlePetUpdated" />
     </div>
 </template>
 
 <style scoped>
-.pet-list-container {
+.pet-listing {
     max-width: 1200px;
     margin: 0 auto;
+    padding: 20px;
 }
 
-h1 {
-    margin-bottom: 20px;
-    text-align: center;
-    color: #333;
+.page-title {
+    font-size: 2.5rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    color: #4a6572;
 }
 
-/* Filter styles */
-.filters {
+.controls {
     display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-bottom: 30px;
     flex-wrap: wrap;
-}
-
-.filter-group {
-    display: flex;
     align-items: center;
+    margin-bottom: 20px;
 }
 
-.filter-group label {
-    margin-right: 10px;
-    font-weight: bold;
-}
 
-.filter-group select {
-    width: auto;
-    padding: 8px;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-}
-
-/* Status message styles */
-.status-message {
+.error-message {
     text-align: center;
     padding: 40px;
-    background-color: #f9f9f9;
-    border-radius: 8px;
-    margin-top: 20px;
+    color: #e74c3c;
+    font-size: 1.1rem;
 }
 
-.status-message.error {
-    color: #f44336;
-    background-color: #ffebee;
+.loading-message,
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-size: 1.1rem;
 }
 
-.status-message.empty {
-    color: #607d8b;
-    background-color: #f5f5f5;
-}
 
-/* Pet grid styles */
 .pets-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
+    gap: 30px;
+    margin-top: 20px;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
-    .pets-grid {
-        grid-template-columns: 1fr;
+    .controls {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
-    .filters {
-        flex-direction: column;
-        align-items: center;
+    .sort-container {
+        margin-left: 0;
+        margin-top: 10px;
+    }
+
+    .pets-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
+@media (max-width: 480px) {
+    .page-title {
+        font-size: 2rem;
+    }
+
+    .pets-grid {
+        grid-template-columns: 1fr;
     }
 }
 </style>

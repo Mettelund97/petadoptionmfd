@@ -10,7 +10,6 @@ const errorMessage = ref('');
 const handlePetAdded = (newPet) => {
     successMessage.value = `Successfully added ${newPet.name} to the database!`;
 
-    // Clear success message after 3 seconds and add another pet
     setTimeout(() => {
         successMessage.value = '';
     }, 3000);
@@ -19,7 +18,6 @@ const handlePetAdded = (newPet) => {
 const handleError = (error) => {
     errorMessage.value = `Error: ${error}`;
 
-    // Clear error message after 5 seconds
     setTimeout(() => {
         errorMessage.value = '';
     }, 5000);
